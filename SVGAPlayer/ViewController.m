@@ -37,28 +37,43 @@ static SVGAParser *parser;
 
 - (IBAction)onChange:(id)sender {
     NSArray *items = @[
-                       @"https://github.com/yyued/SVGA-Samples/blob/master/EmptyState.svga?raw=true",
-                       @"https://github.com/yyued/SVGA-Samples/blob/master/HamburgerArrow.svga?raw=true",
-                       @"https://github.com/yyued/SVGA-Samples/blob/master/PinJump.svga?raw=true",
+                       @"https://cdn.jsdelivr.net/gh/svga/SVGA-Samples@master/EmptyState.svga?raw=true",
+                       @"https://cdn.jsdelivr.net/gh/svga/SVGA-Samples@master/HamburgerArrow.svga?raw=true",
+                       @"https://cdn.jsdelivr.net/gh/svga/SVGA-Samples@master/PinJump.svga?raw=true",
                        @"https://github.com/svga/SVGA-Samples/raw/master/Rocket.svga",
-                       @"https://github.com/yyued/SVGA-Samples/blob/master/TwitterHeart.svga?raw=true",
-                       @"https://github.com/yyued/SVGA-Samples/blob/master/Walkthrough.svga?raw=true",
-                       @"https://github.com/yyued/SVGA-Samples/blob/master/angel.svga?raw=true",
-                       @"https://github.com/yyued/SVGA-Samples/blob/master/halloween.svga?raw=true",
-                       @"https://github.com/yyued/SVGA-Samples/blob/master/kingset.svga?raw=true",
-                       @"https://github.com/yyued/SVGA-Samples/blob/master/posche.svga?raw=true",
-                       @"https://github.com/yyued/SVGA-Samples/blob/master/rose.svga?raw=true",
+                       @"https://cdn.jsdelivr.net/gh/svga/SVGA-Samples@master/TwitterHeart.svga?raw=true",
+                       @"https://cdn.jsdelivr.net/gh/svga/SVGA-Samples@master/Walkthrough.svga?raw=true",
+                       @"https://cdn.jsdelivr.net/gh/svga/SVGA-Samples@master/angel.svga?raw=true",
+                       @"https://cdn.jsdelivr.net/gh/svga/SVGA-Samples@master/halloween.svga?raw=true",
+                       @"https://cdn.jsdelivr.net/gh/svga/SVGA-Samples@master/kingset.svga?raw=true",
+                       @"https://cdn.jsdelivr.net/gh/svga/SVGA-Samples@master/posche.svga?raw=true",
+                       @"https://cdn.jsdelivr.net/gh/svga/SVGA-Samples@master/rose.svga?raw=true",
                        ];
     [UIApplication sharedApplication].networkActivityIndicatorVisible = YES;
+//    parser.enabledMemoryCache = YES;
     [parser parseWithURL:[NSURL URLWithString:items[arc4random() % items.count]]
          completionBlock:^(SVGAVideoEntity * _Nullable videoItem) {
              [UIApplication sharedApplication].networkActivityIndicatorVisible = NO;
              if (videoItem != nil) {
                  self.aPlayer.videoItem = videoItem;
+                 NSMutableParagraphStyle *para = [[NSMutableParagraphStyle alloc] init];
+                 [para setLineBreakMode:NSLineBreakByTruncatingTail];
+                 [para setAlignment:NSTextAlignmentCenter];
+                 NSAttributedString *str = [[NSAttributedString alloc]
+                                            initWithString:@"Hello, World! Hello, World!"
+                                            attributes:@{
+                                                NSFontAttributeName: [UIFont systemFontOfSize:28],
+                                                NSForegroundColorAttributeName: [UIColor whiteColor],
+                                                NSParagraphStyleAttributeName: para,
+                                            }];
+                 [self.aPlayer setAttributedText:str forKey:@"banner"];
+
                  [self.aPlayer startAnimation];
+                 
+//                 [self.aPlayer startAnimationWithRange:NSMakeRange(10, 25) reverse:YES];
              }
          } failureBlock:nil];
-
+//
 //        [parser parseWithURL:[NSURL URLWithString:@"https://github.com/svga/SVGA-Samples/raw/master_aep/BitmapColorArea1.svga"] completionBlock:^(SVGAVideoEntity * _Nullable videoItem) {
 //            if (videoItem != nil) {
 //                self.aPlayer.videoItem = videoItem;

@@ -31,7 +31,6 @@
 @property (nonatomic, assign) NSRange currentRange;
 @property (nonatomic, assign) BOOL forwardAnimating;
 @property (nonatomic, assign) BOOL reversing;
-@property (nonatomic, assign) BOOL audioPlaying;
 
 @end 
 
@@ -79,14 +78,30 @@
     }
     [self stopAnimation:NO];
     self.loopCount = 0;
+    if (self.videoItem.FPS == 0) {
+        NSLog(@"videoItem FPS could not be 0！");
+        return;
+    }
     self.displayLink = [CADisplayLink displayLinkWithTarget:self selector:@selector(next)];
-
     self.displayLink.frameInterval = 60 / self.videoItem.FPS;
-    [self.displayLink addToRunLoop:[NSRunLoop mainRunLoop] forMode:NSRunLoopCommonModes];
+    [self.displayLink addToRunLoop:[NSRunLoop mainRunLoop] forMode:self.mainRunLoopMode];
     self.forwardAnimating = !self.reversing;
 }
 
 - (void)startAnimationWithRange:(NSRange)range reverse:(BOOL)reverse {
+    if (self.videoItem == nil) {
+        NSLog(@"videoItem could not be nil！");
+        return;
+    } else if (self.drawLayer == nil) {
+        self.videoItem = _videoItem;
+    }
+    [self stopAnimation:NO];
+    self.loopCount = 0;
+    if (self.videoItem.FPS == 0) {
+        NSLog(@"videoItem FPS could not be 0！");
+        return;
+    }
+    
     self.currentRange = range;
     self.reversing = reverse;
     if (reverse) {
@@ -95,7 +110,10 @@
     else {
         self.currentFrame = MAX(0, range.location);
     }
-    [self startAnimation];
+    self.forwardAnimating = !self.reversing;
+    self.displayLink = [CADisplayLink displayLinkWithTarget:self selector:@selector(next)];
+    self.displayLink.frameInterval = 60 / self.videoItem.FPS;
+    [self.displayLink addToRunLoop:[NSRunLoop mainRunLoop] forMode:self.mainRunLoopMode];
 }
 
 - (void)pauseAnimation {
@@ -125,13 +143,12 @@
 }
 
 - (void)clearAudios {
-    if (!self.audioPlaying) {
-        return;
-    }
     for (SVGAAudioLayer *layer in self.audioLayers) {
-        [layer.audioPlayer stop];
+        if (layer.audioPlaying) {
+            [layer.audioPlayer stop];
+            layer.audioPlaying = NO;
+        }
     }
-    self.audioPlaying = NO;
 }
 
 - (void)stepToFrame:(NSInteger)frame andPlay:(BOOL)andPlay {
@@ -149,9 +166,13 @@
     [self update];
     if (andPlay) {
         self.forwardAnimating = YES;
+        if (self.videoItem.FPS == 0) {
+            NSLog(@"videoItem FPS could not be 0！");
+            return;
+        }
         self.displayLink = [CADisplayLink displayLinkWithTarget:self selector:@selector(next)];
         self.displayLink.frameInterval = 60 / self.videoItem.FPS;
-        [self.displayLink addToRunLoop:[NSRunLoop mainRunLoop] forMode:NSRunLoopCommonModes];
+        [self.displayLink addToRunLoop:[NSRunLoop mainRunLoop] forMode:self.mainRunLoopMode];
     }
 }
 
@@ -202,13 +223,17 @@
         if (sprite.imageKey != nil) {
             if (self.dynamicTexts[sprite.imageKey] != nil) {
                 NSAttributedString *text = self.dynamicTexts[sprite.imageKey];
-                CGSize size = [text boundingRectWithSize:CGSizeMake(CGFLOAT_MAX, CGFLOAT_MAX) options:NSStringDrawingUsesLineFragmentOrigin context:NULL].size;
+                CGSize bitmapSize = CGSizeMake(self.videoItem.images[sprite.imageKey].size.width * self.videoItem.images[sprite.imageKey].scale, self.videoItem.images[sprite.imageKey].size.height * self.videoItem.images[sprite.imageKey].scale);
+                CGSize size = [text boundingRectWithSize:bitmapSize
+                                                 options:NSStringDrawingUsesLineFragmentOrigin
+                                                 context:NULL].size;
                 CATextLayer *textLayer = [CATextLayer layer];
                 textLayer.contentsScale = [[UIScreen mainScreen] scale];
                 [textLayer setString:self.dynamicTexts[sprite.imageKey]];
                 textLayer.frame = CGRectMake(0, 0, size.width, size.height);
                 [contentLayer addSublayer:textLayer];
                 contentLayer.textLayer = textLayer;
+                [contentLayer resetTextLayerProperties:text];
             }
             if (self.dynamicHiddens[sprite.imageKey] != nil &&
                 [self.dynamicHiddens[sprite.imageKey] boolValue] == YES) {
@@ -320,14 +345,14 @@
     [CATransaction setDisableActions:NO];
     if (self.forwardAnimating && self.audioLayers.count > 0) {
         for (SVGAAudioLayer *layer in self.audioLayers) {
-            if (!self.audioPlaying && layer.audioItem.startFrame >= self.currentFrame) {
+            if (!layer.audioPlaying && layer.audioItem.startFrame <= self.currentFrame && self.currentFrame <= layer.audioItem.endFrame) {
                 [layer.audioPlayer setCurrentTime:(NSTimeInterval)(layer.audioItem.startTime / 1000)];
                 [layer.audioPlayer play];
-                self.audioPlaying = YES;
+                layer.audioPlaying = YES;
             }
-            if (self.audioPlaying && layer.audioItem.endFrame <= self.currentFrame) {
+            if (layer.audioPlaying && layer.audioItem.endFrame <= self.currentFrame) {
                 [layer.audioPlayer stop];
-                self.audioPlaying = NO;
+                layer.audioPlaying = NO;
             }
         }
     }
@@ -365,11 +390,20 @@
     }
     [self update];
     id delegate = self.delegate;
-    if (delegate != nil && [delegate respondsToSelector:@selector(svgaPlayerDidAnimatedToFrame:)]) {
-        [delegate svgaPlayerDidAnimatedToFrame:self.currentFrame];
-    }
-    if (delegate != nil && [delegate respondsToSelector:@selector(svgaPlayerDidAnimatedToPercentage:)] && self.videoItem.frames > 0) {
-        [delegate svgaPlayerDidAnimatedToPercentage:(CGFloat)(self.currentFrame + 1) / (CGFloat)self.videoItem.frames];
+    if (delegate != nil) {
+        if ([delegate respondsToSelector:@selector(svgaPlayer:didAnimatedToFrame:)]) {
+            [delegate svgaPlayer:self didAnimatedToFrame:self.currentFrame];
+        } else if ([delegate respondsToSelector:@selector(svgaPlayerDidAnimatedToFrame:)]){
+            [delegate svgaPlayerDidAnimatedToFrame:self.currentFrame];
+        }
+
+        if (self.videoItem.frames > 0) {
+            if ([delegate respondsToSelector:@selector(svgaPlayer:didAnimatedToPercentage:)]) {
+                [delegate svgaPlayer:self didAnimatedToPercentage:(CGFloat)(self.currentFrame + 1) / (CGFloat)self.videoItem.frames];
+            } else if ([delegate respondsToSelector:@selector(svgaPlayerDidAnimatedToPercentage:)]) {
+                [delegate svgaPlayerDidAnimatedToPercentage:(CGFloat)(self.currentFrame + 1) / (CGFloat)self.videoItem.frames];
+            }
+        }
     }
 }
 
@@ -428,7 +462,9 @@
     [mutableDynamicTexts setObject:attributedText forKey:aKey];
     self.dynamicTexts = mutableDynamicTexts;
     if (self.contentLayers.count > 0) {
-        CGSize size = [attributedText boundingRectWithSize:CGSizeMake(CGFLOAT_MAX, CGFLOAT_MAX) options:NSStringDrawingUsesLineFragmentOrigin context:NULL].size;
+        CGSize bitmapSize = CGSizeMake(self.videoItem.images[aKey].size.width * self.videoItem.images[aKey].scale, self.videoItem.images[aKey].size.height * self.videoItem.images[aKey].scale);
+        CGSize size = [attributedText boundingRectWithSize:bitmapSize
+                                                   options:NSStringDrawingUsesLineFragmentOrigin context:NULL].size;
         CATextLayer *textLayer;
         for (SVGAContentLayer *layer in self.contentLayers) {
             if ([layer isKindOfClass:[SVGAContentLayer class]] && [layer.imageKey isEqualToString:aKey]) {
@@ -437,6 +473,7 @@
                     textLayer = [CATextLayer layer];
                     [layer addSublayer:textLayer];
                     layer.textLayer = textLayer;
+                    [layer resetTextLayerProperties:attributedText];
                 }
             }
         }
@@ -509,6 +546,13 @@
         _dynamicDrawings = @{};
     }
     return _dynamicDrawings;
+}
+
+- (NSRunLoopMode)mainRunLoopMode {
+    if (!_mainRunLoopMode) {
+        _mainRunLoopMode = NSRunLoopCommonModes;
+    }
+    return _mainRunLoopMode;
 }
 
 @end
